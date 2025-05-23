@@ -3,17 +3,19 @@ import { Transaction } from "@mysten/sui/transactions";
 import { ConnectButton, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
 import { useSuiClient } from "@mysten/dapp-kit";
 import { useAccounts } from "@mysten/dapp-kit";
+import { useEffect } from "react";
 
 export default function Home() {
   const client = useSuiClient();
   const [account] = useAccounts();
   const { mutate: signAndExecute, isPending: isMinting } =
     useSignAndExecuteTransaction();
-  const contractAddress = "0xa1d8197c4a9127119ff2ace14966c6c51797c847ab5e83cac408eb492804f7b3"
-  const packageId = contractAddress; // Using same address as contract for package ID
-  const battleCollectionId ="0xaa9d4f350ce4222551969afd372e4371d834833873de401c15b9b8e54ab08c64"
-  const pet1Id="0x5a88cb7bcfe3f75bdd1b36d8a639181a9079fa0a4eaaa5a3123e09f4dcd5d041"
-  const pet2Id="0xee798a82c55fb2702ecbb490b5d8634e1534aeb93426b5c62569425d4104f89e"
+    const NFT_Collection_ID="0xc03ee66d6922dcb94a79c1f8fb9252575044e117106219b725a3d4e032bce40b"
+    const packageId="0x58ef067daa0ad013898fb0a8c05cab46820c6521bfc0ec5570c20747d55d3d12"
+    const global_id="0x7aeb26d8e631b516a9d0f2789214867bba25ffff6a8d520d68ae5c52440be2f6"
+    const battleCollectionId="0xd848c8b40736f054f1834ac5d13699967989ae47e9a1f54338598e1fb8833466"
+  const pet1Id="0x6201e550bd850cb488948dc55ea9dfc03ba958d433dd7ccce558be3f372be710"
+  const pet2Id="0xa713ccfbccd99d91a461e631a77880d3c6021d5d9dd59e0d483a7f378e51da54"
   // const parentObjectId="0x32521f30675c13a1976cf38979c69948cadff4f864c24099eab53214abda2d03"
 
   const mint = async () => {
@@ -21,7 +23,7 @@ export default function Home() {
     const petCollectionId = "0xa0c62d01496f82d3ca4d77d59a1624a952e264bba0417e11656ca0f6f54d2b2b";
 
     txb.moveCall({
-      target: `${contractAddress}::tailz::mint_pet`,
+      target: `${packageId}::tailz::mint_pet`,
       arguments: [
         txb.object(petCollectionId),
         txb.pure.string("hello"),
@@ -72,8 +74,8 @@ signAndExecute(
 const createTransferPolicy = async () => {
   const tx = new Transaction();
     const [policy, policyCap] = tx.moveCall({
-       target: `${contractAddress}::tailz::mint_pet`,
-      typeArguments: [`${contractAddress}::tailz::DynamicNFT`]
+       target: `${packageId}::tailz::mint_pet`,
+      typeArguments: [`${packageId}::tailz::DynamicNFT`]
     });
 
    
@@ -100,7 +102,7 @@ signAndExecute(
   const claimPublisherId = async () => {
     const tx = new Transaction();
     tx.moveCall({
-      target: `${contractAddress}::tailz::get_publisher_id`,
+      target: `${packageId}::tailz::get_publisher_id`,
       arguments: [tx.object("0xfb5ce0ac3138a99dadc1b4ca0320d11e7a7b47074bee2a16babf629a57b4d341")]
     });
 
@@ -180,8 +182,8 @@ const createBattle = async () => {
     target: `${packageId}::tailz::create_battle`,
     arguments: [
       tx.object(battleCollectionId), // BattleCollection object
-      tx.object(pet1Id),             // DynamicNFT object 1
-      tx.object(pet2Id)              // DynamicNFT object 2
+      tx.pure.u256(pet1Id),             // DynamicNFT object 1
+      tx.pure.u256(pet2Id)              // DynamicNFT object 2
     ]
   });
 
@@ -202,8 +204,54 @@ const createBattle = async () => {
   );
 
 }
+useEffect(() => {
+  const fetchAllBattles = async () => {
+    // 1. Get BattleCollection
+    const collection = await client.getObject({
+      id: battleCollectionId,
+      options: { showContent: true }
+    });
+  
+    // 2. Get battles table ID
+    const battlesTableId = collection.data?.content?.fields.battles?.fields.id.id;
+  
+    // 3. Get all battle entries
+    const battles = await client.getDynamicFields({
+      parentId: battlesTableId,
+    });
+  
+    // 4. Fetch full battle data
+    return Promise.all(
+      battles.data.map(async (battle) => {
+        const battleData = await client.getObject({
+          id: battle.objectId,
+          options: { showContent: true },
+        });
+  
+        const fields = battleData.data?.content?.fields;
+        return {
+          id: battleData.data?.objectId,
+          battle_id: fields?.battle_id,
+          pet1: fields?.pet1,
+          pet2: fields?.pet2,
+          stake_total_pet1: fields?.stake_total_pet1,
+          stake_total_pet2: fields?.stake_total_pet2,
+          creator: fields?.creator,
+          is_active: fields?.is_active,
+          stake_info: fields?.stake_info // Contains nested stakes
+        };
+      })
+    );
+  };
+  
+  // Usage
+  fetchAllBattles().then(battles => {
+    console.log('All Battles:', battles);
+  });
+}, []);
+
   return (
-    <div>
+    <div className="flex flex-col items-center h-screen gap-4">
       <ConnectButton />
       <button onClick={mint} className="bg-blue-500 text-white p-2 rounded-md">
         Mint
@@ -217,6 +265,7 @@ const createBattle = async () => {
 <button className="bg-blue-500" onClick={handleTransfer}>try sending TAILZ</button>
 
 <button className="bg-blue-500" onClick={createBattle}>create battle</button>
+
     </div>
   );
 
@@ -225,7 +274,7 @@ const createBattle = async () => {
  // tx.moveCall({
     //   target: '0x2::transfer::public_share_object',
     //   arguments: [policy],
-    //   typeArguments: [`0x2::transfer_policy::TransferPolicy<${contractAddress}::tailz::DynamicNFT>`]
+    //   typeArguments: [`0x2::transfer_policy::TransferPolicy<${packageId}::tailz::DynamicNFT>`]
     // });
 
   
